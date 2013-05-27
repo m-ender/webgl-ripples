@@ -1,0 +1,34 @@
+body {
+    margin: 0px;
+    padding: 0px;
+    overflow:hidden;
+}
+
+canvas#gl-canvas {
+    background: blue;
+    width: 100%;
+    height: 100%;
+    float: left;
+    display: block;
+    margin-right:5px;
+}
+
+div#debug{
+    position:absolute;
+    right:0px;
+    top:0px;
+    width: 20%;
+    height: 100%;
+    padding: 10px;
+    font-family: Consolas;
+    background: rgb(255, 255, 255);
+    background: rgba(255, 255, 255, 0.8);
+}
+
+div#message{
+    visibility:hidden;
+    border:1px solid black;
+    padding: 5px;
+    background: rgb(48, 41, 17);
+    color: white;
+}

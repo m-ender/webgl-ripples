@@ -1,0 +1,136 @@
+<html>
+<head>
+<title>Waves</title>
+<link rel="stylesheet" type="text/css" href="main.css" />
+
+<script id="splash-vertex-shader" type="x-shader/x-vertex">
+attribute vec4 aPos;
+attribute vec2 aTexCoord;
+
+varying vec2 vTexCoord;
+
+void main()
+{
+    vTexCoord = aTexCoord;
+    gl_Position = aPos;
+}
+</script>
+
+<script id="splash-fragment-shader" type="x-shader/x-fragment">
+#ifdef GL_ES
+precision highp float;
+#endif
+
+uniform vec2  uCenter;     // Center of sinusoidal splash, in normalized coordinates
+uniform float uR;          // Radius on which the sine is going to be centered, in screen coordinates
+uniform float uWidth;      // Width (period) of the sine, in screen coordinates
+uniform int   uResolution; // of the textures
+
+varying vec2 vTexCoord;
+
+void main()
+{
+    float pi = 3.14159265358979323846264;
+    float e  = 2.71828182845904523536028;
+    float d = length(vTexCoord - uCenter);
+    float r = uR/float(uResolution);
+    float width = uWidth/float(uResolution);
+    
+    // x exp(-x^2) shaped ripple:
+    //float z = 0.5 + step(r - width/2.0, d) * (step(-r - width/2.0, -d)) * (2.0*sqrt(2.0*e)/width)*(d-r)*exp(-16.0*(d - r)*(d - r)/(width*width)); // The step functions "clamp" the wave to one period centred at uR
+    
+    // 4 sinusoidal ripples:
+     float z = 0.5 + step(r - width/2.0, d) * (step(-r - width/2.0, -d)) * 0.5*(sin((d - r)*8.0*pi/width)); // The step functions "clamp" the wave to one period centred at uR
+    gl_FragColor = vec4(z, z, z, 1.0);
+}
+</script>
+
+<script id="simulation-vertex-shader" type="x-shader/x-vertex">
+attribute vec4 aPos;
+attribute vec2 aTexCoord;
+
+varying vec2 vTexCoord;
+
+void main()
+{    
+    vTexCoord = aTexCoord;
+    gl_Position = aPos;
+}
+</script>
+
+<script id="simulation-fragment-shader" type="x-shader/x-fragment">
+#ifdef GL_ES
+precision highp float;
+#endif
+
+uniform sampler2D uPreviousTexture;
+uniform sampler2D uCurrentTexture;
+
+uniform int       uC;  // wave propagation speed, given in texels per second
+uniform float     uDT; // time step size, given in seconds
+uniform int       uResolution; // of the textures
+varying vec2      vTexCoord;
+
+void main()
+{
+    float stepSize = 1.0/float(uResolution);
+    float z  = texture2D(uCurrentTexture, vTexCoord).r;                         // sample at current position
+    float zw = texture2D(uCurrentTexture, vTexCoord + vec2(-stepSize, 0)).r;    // sample west of current position
+    float ze = texture2D(uCurrentTexture, vTexCoord + vec2( stepSize, 0)).r;    // sample east of current position
+    float zs = texture2D(uCurrentTexture, vTexCoord + vec2(0, -stepSize)).r;    // sample south of current position
+    float zn = texture2D(uCurrentTexture, vTexCoord + vec2(0,  stepSize)).r;    // sample north of current position
+    float zp = texture2D(uPreviousTexture, vTexCoord).r;                        // sample at previous timestep
+    
+    float eps = float(uC*uC)*uDT*uDT; // scaling factor from finite difference scheme
+    
+    float znew = 0.995*(2.0*z + eps*(zw + ze + zs + zn - 4.0*z) - zp - 0.5) + 0.5; // finite difference scheme of 2-dimensional wave function
+    
+    gl_FragColor = vec4(znew, znew, znew, 1.0); 
+    
+    if(vTexCoord.s - stepSize < 0.0 || vTexCoord.s + stepSize > 1.0 || vTexCoord.t - stepSize < 0.0 || vTexCoord.t + stepSize > 1.0)
+    {
+        gl_FragColor = vec4(0.5, 0.5, 0.5, 1);
+    }
+}
+</script>
+
+<script id="screen-vertex-shader" type="x-shader/x-vertex">
+attribute vec4 aPos;
+attribute vec2 aTexCoord;
+
+varying vec2 vTexCoord;
+
+void main()
+{    
+    vTexCoord = aTexCoord;
+    gl_Position = aPos;
+}
+</script>
+
+<script id="screen-fragment-shader" type="x-shader/x-fragment">
+#ifdef GL_ES
+precision highp float;
+#endif
+
+uniform sampler2D uTexture;
+varying vec2      vTexCoord;
+
+void main()
+{
+    gl_FragColor = texture2D(uTexture, vTexCoord);
+}
+</script>
+
+<script type="text/javascript" src="webgl-utils.js"></script>
+<script type="text/javascript" src="waves.js"></script>
+</head>
+<body>
+<canvas id="gl-canvas">
+    Oops ... your browser doesn't support HTML5's Canvas elements!
+</canvas>
+<div id="debug">
+    <p><b>Debug Output</b></p>
+    <div id="message"></div>
+</div>
+</body>
+</html>

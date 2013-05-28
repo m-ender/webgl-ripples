@@ -29,10 +29,11 @@ var lastTime;
 // Simulation parameters
 var dT = 1/fps; // Time step, in seconds
 var c = 40;     // Wave propagation speed, in texels per second
+var damping = 0.99;
 
 // Splash parameters
-var width = 40;
-var r = 40;
+var width = 20;
+var r = 10;
 
 window.onload = init;
 
@@ -49,6 +50,12 @@ function CheckError(msg)
 
 function InitTextureFramebuffers()
 {
+    var singleFloatExt = gl.getExtension('OES_texture_float');
+    if(!singleFloatExt) messageBox.innerHTLM = "Your browser does not support float textures.";
+    
+    var depthTextureExt = gl.getExtension("WEBKIT_WEBGL_depth_texture");
+    if(!depthTextureExt) messageBox.innerHTLM = "Your browser does not support depth textures.";
+    
     for(var i = 0; i <= 2; i++)
     {
         rttFramebuffers[i] = gl.createFramebuffer();
@@ -98,7 +105,7 @@ function InitShaders(gl, vertexShaderId, fragmentShaderId)
         gl.compileShader(vertexShader);
         if(!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS))
         {
-            messageBox.innerHTML = "Vertex shader failed to compile. The error log is:</br>" + gl.getShaderInfoLog(vertexShader);
+            messageBox.innerHTML = "Vertex shader '" + vertexShaderId + "' failed to compile. The error log is:</br>" + gl.getShaderInfoLog(vertexShader);
             return -1;
         }
     }
@@ -106,7 +113,7 @@ function InitShaders(gl, vertexShaderId, fragmentShaderId)
     var fragmentElement = document.getElementById(fragmentShaderId);
     if(!fragmentElement)
     {
-        messageBox.innerHTML = "Unable to load fragment shader '" + fragmenthaderId;
+        messageBox.innerHTML = "Unable to load fragment shader '" + fragmentShaderId;
         return -1;
     }
     else
@@ -116,7 +123,7 @@ function InitShaders(gl, vertexShaderId, fragmentShaderId)
         gl.compileShader(fragmentShader);
         if(!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS))
         {
-            messageBox.innerHTML = "Fragment shader failed to compile. The error log is:</br>" + gl.getShaderInfoLog(fragmentShader);
+            messageBox.innerHTML = "Fragment shader '" + fragmentShaderId + "' failed to compile. The error log is:</br>" + gl.getShaderInfoLog(fragmentShader);
             return -1;
         }
     }
@@ -154,6 +161,7 @@ function init()
     } else {
         messageBox.innerHTML = "WebGL up and running!";
     }
+    
     messageBox.style.visibility = "visible";
     
     gl.clearColor(1.0, 1.0, 0.0, 1.0);
@@ -177,6 +185,7 @@ function init()
     simulationProgram.uDT = gl.getUniformLocation(simulationProgram.program, "uDT");
     simulationProgram.uDS = gl.getUniformLocation(simulationProgram.program, "uDS");
     simulationProgram.uC = gl.getUniformLocation(simulationProgram.program, "uC");
+    simulationProgram.uDamping = gl.getUniformLocation(simulationProgram.program, "uDamping");
     simulationProgram.uResolution = gl.getUniformLocation(simulationProgram.program, "uResolution");
     simulationProgram.aPos = gl.getAttribLocation(simulationProgram.program, "aPos");
     simulationProgram.aTexCoord = gl.getAttribLocation(simulationProgram.program, "aTexCoord");
@@ -186,6 +195,7 @@ function init()
     gl.uniform1i(simulationProgram.uCurrentTexture, 1);
     gl.uniform1f(simulationProgram.uDT, dT);
     gl.uniform1i(simulationProgram.uC, c);
+    gl.uniform1f(simulationProgram.uDamping, damping);
     gl.uniform1i(simulationProgram.uResolution, resolution);
     
     screenProgram.program = InitShaders(gl, "screen-vertex-shader", "screen-fragment-shader");    
@@ -268,7 +278,7 @@ function prepareScene()
     gl.bindFramebuffer(gl.FRAMEBUFFER, rttFramebuffers[previousTexture]);
     
     gl.uniform1f(splashProgram.uR, r);
-    gl.uniform2f(splashProgram.uCenter, 0.5, 0.5);
+    gl.uniform2f(splashProgram.uCenter, 0.2, 0.7);
     
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);

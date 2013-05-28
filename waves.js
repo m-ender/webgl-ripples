@@ -17,6 +17,7 @@ var screenProgram = {};      // Displays the current texture on screen
 var textures = [];
 var rttFramebuffers = []; // Render to texture memory (this will store 3 framebuffers corresponding to the three textures)
 var resolution = 512;
+var bcTexture; // And a texture for the boundary conditions, white regions will disallow wave propagation
 
 var previousTexture; // Points to the texture from two frames ago, so that we only ever need to add to this value (makes module maths simpler)
 
@@ -32,8 +33,8 @@ var c = 40;     // Wave propagation speed, in texels per second
 var damping = 0.99;
 
 // Splash parameters
-var width = 20;
-var r = 10;
+var width = 30;
+var r = 15;
 
 window.onload = init;
 
@@ -46,6 +47,20 @@ function CheckError(msg)
         if (msg) { errMsg = msg + "</br>" + errMsg; }
         messageBox.innerHTML = errMsg;
     }
+}
+
+function ConfigureBCTexture(image) 
+{
+    bcTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, bcTexture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.bindTexture(gl.TEXTURE_2D, null);
 }
 
 function InitTextureFramebuffers()
@@ -168,6 +183,7 @@ function init()
     
     // Load shaders and get uniform locations
     splashProgram.program = InitShaders(gl, "splash-vertex-shader", "splash-fragment-shader");
+    splashProgram.uBCTexture = gl.getUniformLocation(splashProgram.program, "uBCTexture");
     splashProgram.uCenter = gl.getUniformLocation(splashProgram.program, "uCenter");
     splashProgram.uR = gl.getUniformLocation(splashProgram.program, "uR");
     splashProgram.uWidth = gl.getUniformLocation(splashProgram.program, "uWidth");
@@ -178,8 +194,10 @@ function init()
     gl.useProgram(splashProgram.program);
     gl.uniform1f(splashProgram.uWidth, width);
     gl.uniform1i(splashProgram.uResolution, resolution);
+    gl.uniform1i(splashProgram.uBCTexture, 0);
     
     simulationProgram.program = InitShaders(gl, "simulation-vertex-shader", "simulation-fragment-shader");    
+    simulationProgram.uBCTexture = gl.getUniformLocation(simulationProgram.program, "uBCTexture");
     simulationProgram.uPreviousTexture = gl.getUniformLocation(simulationProgram.program, "uPreviousTexture");
     simulationProgram.uCurrentTexture = gl.getUniformLocation(simulationProgram.program, "uCurrentTexture");
     simulationProgram.uDT = gl.getUniformLocation(simulationProgram.program, "uDT");
@@ -191,20 +209,23 @@ function init()
     simulationProgram.aTexCoord = gl.getAttribLocation(simulationProgram.program, "aTexCoord");
     
     gl.useProgram(simulationProgram.program);
-    gl.uniform1i(simulationProgram.uPreviousTexture, 0);
-    gl.uniform1i(simulationProgram.uCurrentTexture, 1);
+    gl.uniform1i(simulationProgram.uBCTexture, 0);
+    gl.uniform1i(simulationProgram.uPreviousTexture, 1);
+    gl.uniform1i(simulationProgram.uCurrentTexture, 2);
     gl.uniform1f(simulationProgram.uDT, dT);
     gl.uniform1i(simulationProgram.uC, c);
     gl.uniform1f(simulationProgram.uDamping, damping);
     gl.uniform1i(simulationProgram.uResolution, resolution);
     
-    screenProgram.program = InitShaders(gl, "screen-vertex-shader", "screen-fragment-shader");    
-    screenProgram.uTexture = gl.getUniformLocation(screenProgram.program, "uTexture");
+    screenProgram.program = InitShaders(gl, "screen-vertex-shader", "screen-fragment-shader");  
+    screenProgram.uBCTexture = gl.getUniformLocation(screenProgram.program, "uBCTexture");  
+    screenProgram.uWaveTexture = gl.getUniformLocation(screenProgram.program, "uWaveTexture");
     screenProgram.aPos = gl.getAttribLocation(screenProgram.program, "aPos");
     screenProgram.aTexCoord = gl.getAttribLocation(screenProgram.program, "aTexCoord");
     
     gl.useProgram(screenProgram.program);
-    gl.uniform1i(screenProgram.uTexture, 0);
+    gl.uniform1i(screenProgram.uBCTexture, 0);
+    gl.uniform1i(screenProgram.uWaveTexture, 1);
     
     gl.useProgram(null);
     
@@ -248,26 +269,17 @@ function init()
     gl.enableVertexAttribArray(screenProgram.aTexCoord);
     
     // Initialize texture
-    /*var previousImage = new Image();
-    var currentImage = new Image();
-    var imagesLoaded = 0;
-    var imageCallback = function() {
-        imagesLoaded++;
-        if (imagesLoaded == 2)
-        {
-        }
-    }
-    
-    previousImage.onload = imageCallback;
-    previousImage.src = "baseTexture-1.png";
-    currentImage.onload = imageCallback;
-    currentImage.src = "baseTexture-2.png";*/
+    var bcImage = new Image();
+    bcImage.onload = function() {
+        ConfigureBCTexture(bcImage);
+        previousTexture = 0;
+        prepareScene();
+        lastTime = Date.now();
+        render();
+    };
+    bcImage.src = "bcTexture.gif";
     
     InitTextureFramebuffers();
-    previousTexture = 0;
-    prepareScene();
-    lastTime = Date.now();
-    render();
 }
 
 function prepareScene()
@@ -277,8 +289,11 @@ function prepareScene()
     
     gl.bindFramebuffer(gl.FRAMEBUFFER, rttFramebuffers[previousTexture]);
     
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, bcTexture);
+    
     gl.uniform1f(splashProgram.uR, r);
-    gl.uniform2f(splashProgram.uCenter, 0.2, 0.7);
+    gl.uniform2f(splashProgram.uCenter, 0.5, 0.5);
     
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
@@ -291,6 +306,7 @@ function prepareScene()
     
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     
+    gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, textures[previousTexture]);
     gl.generateMipmap(gl.TEXTURE_2D);
     gl.bindTexture(gl.TEXTURE_2D, textures[(previousTexture + 1) % 3]);
@@ -301,9 +317,9 @@ function drawNewTexture()
 {
     gl.useProgram(simulationProgram.program);
     
-    gl.activeTexture(gl.TEXTURE0)
-    gl.bindTexture(gl.TEXTURE_2D, textures[previousTexture]);
     gl.activeTexture(gl.TEXTURE1)
+    gl.bindTexture(gl.TEXTURE_2D, textures[previousTexture]);
+    gl.activeTexture(gl.TEXTURE2)
     gl.bindTexture(gl.TEXTURE_2D, textures[(previousTexture + 1) % 3]);
     
     gl.viewport(0, 0, resolution, resolution);
@@ -315,7 +331,7 @@ function drawScreen()
 {
     gl.useProgram(screenProgram.program);
 
-    gl.activeTexture(gl.TEXTURE0)
+    gl.activeTexture(gl.TEXTURE1)
     gl.bindTexture(gl.TEXTURE_2D, textures[(previousTexture + 2) % 3]);
     gl.generateMipmap(gl.TEXTURE_2D);
     

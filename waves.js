@@ -36,6 +36,9 @@ var damping = 0.99;
 var width = 15;
 var r = 8;
 
+var randomSplashP = 1/60; // Probability for a random splash to be created per frame
+var splashRequested;
+
 window.onload = init;
 
 function CheckError(msg)
@@ -157,6 +160,14 @@ function InitShaders(gl, vertexShaderId, fragmentShaderId)
     return program;
 }
 
+function handleMouseDown(event) {
+    var rect = canvas.getBoundingClientRect();
+    splashRequested = {
+      x: (event.clientX - rect.left) / rect.width,    // Normalized to give texture coordinates
+      y: 1 - (event.clientY - rect.top) / rect.height // Normalized and inverted to give texture coordinates
+    };
+}
+
 function init()
 {
     canvas = document.getElementById("gl-canvas");
@@ -167,6 +178,8 @@ function init()
     // This is the resolution of the canvas (which will be scaled to the extent, using some rather primitive anti-aliasing techniques)
     canvas.height = parseInt(computedWidth);
     canvas.width = parseInt(computedWidth);
+    
+    canvas.addEventListener('mousedown', handleMouseDown, false);
     
     messageBox = document.getElementById("message");
     
@@ -366,10 +379,16 @@ function render()
     {
         lastTime = currentTime - (dTime % interval);
         
-        if(Math.random() < 1/60)
+        if(Math.random() < randomSplashP)
         {
             previousTexture = (previousTexture + 2) % 3;
             addSplash(previousTexture, 1, Math.random(), Math.random());
+        }
+        if(splashRequested)
+        {
+            previousTexture = (previousTexture + 2) % 3;
+            addSplash(previousTexture, 1, splashRequested.x, splashRequested.y);
+            splashRequested = null;
         }
         
         gl.bindFramebuffer(gl.FRAMEBUFFER, rttFramebuffers[(previousTexture + 2) % 3]);

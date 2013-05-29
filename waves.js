@@ -192,7 +192,7 @@ function init()
     
     messageBox.style.visibility = "visible";
     
-    gl.clearColor(1.0, 1.0, 0.0, 1.0);
+    gl.clearColor(0.0, 0.0, 0.0, 1.0);
     
     // Load shaders and get uniform locations
     splashProgram.program = InitShaders(gl, "splash-vertex-shader", "splash-fragment-shader");
@@ -236,12 +236,14 @@ function init()
     screenProgram.program = InitShaders(gl, "screen-vertex-shader", "screen-fragment-shader");  
     screenProgram.uBCTexture = gl.getUniformLocation(screenProgram.program, "uBCTexture");  
     screenProgram.uWaveTexture = gl.getUniformLocation(screenProgram.program, "uWaveTexture");
+    screenProgram.uResolution = gl.getUniformLocation(screenProgram.program, "uResolution");
     screenProgram.aPos = gl.getAttribLocation(screenProgram.program, "aPos");
     screenProgram.aTexCoord = gl.getAttribLocation(screenProgram.program, "aTexCoord");
     
     gl.useProgram(screenProgram.program);
     gl.uniform1i(screenProgram.uBCTexture, 0);
     gl.uniform1i(screenProgram.uWaveTexture, 1);
+    gl.uniform1i(screenProgram.uResolution, resolution);
     
     gl.useProgram(null);
     

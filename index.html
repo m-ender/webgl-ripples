@@ -22,15 +22,19 @@ precision highp float;
 #endif
 
 uniform sampler2D uBCTexture;
+uniform sampler2D uBaseTexture;
 
-uniform vec2  uCenter;     // Center of sinusoidal splash, in normalized coordinates
-uniform float uR;          // Radius on which the sine is going to be centered, in screen coordinates
-uniform float uWidth;      // Width (period) of the sine, in screen coordinates
-uniform int   uResolution; // of the textures
+uniform int   uUseBaseTexture; // 0 - initialise to empty texture, with 0.5 everywhere, 1 - add splash onto existing uBaseTexture
+
+uniform vec2  uCenter;         // Center of sinusoidal splash, in normalized coordinates
+uniform float uR;              // Radius on which the sine is going to be centered, in screen coordinates
+uniform float uWidth;          // Width (period) of the sine, in screen coordinates
+uniform int   uResolution;     // of the textures
 
 varying vec2 vTexCoord;
 
 vec4 floatToRGBA(float z);
+float RGBAToFloat(vec4 rgba);
 
 void main()
 {
@@ -40,12 +44,13 @@ void main()
     float r = uR/float(uResolution);
     float width = uWidth/float(uResolution);
     float bc = texture2D(uBCTexture, vTexCoord).r;
-    
+    float base = float(uUseBaseTexture) * 4.0*RGBAToFloat(texture2D(uBaseTexture, vTexCoord)) + float(1 - uUseBaseTexture) * 0.5;
+        
     // x exp(-x^2) shaped ripple:
     //float z = 0.5 + step(r - width/2.0, d) * (step(-r - width/2.0, -d)) * (2.0*sqrt(2.0*e)/width)*(d-r)*exp(-16.0*(d - r)*(d - r)/(width*width)); // The step functions "clamp" the wave to one period centred at uR
     
     // 4 sinusoidal ripples:
-    float z = 0.5 + (1.0 - bc)*step(r - width/2.0, d) * (step(-r - width/2.0, -d)) * 0.5*(sin((d - r)*8.0*pi/width)); // The step functions "clamp" the wave to one period centred at uR
+    float z = base + (1.0 - bc)*step(r - width/2.0, d) * (step(-r - width/2.0, -d)) * 0.5*(sin((d - r)*4.0*pi/width)); // The step functions "clamp" the wave to one period centred at uR
         
     gl_FragColor = floatToRGBA(z/4.0); // sacrifice two digits of precision, to make sure that we're always in the [0,1) range.
 }
@@ -58,6 +63,11 @@ vec4 floatToRGBA(float z)
     enc = fract(enc);
     enc -= enc.gbaa * vec4(1.0/255.0,1.0/255.0,1.0/255.0,0.0);
     return enc;
+}
+
+float RGBAToFloat(vec4 rgba)
+{
+    return dot( rgba, vec4(1.0, 1.0/255.0, 1.0/(255.0*255.0), 1.0/(255.0*255.0*255.0)) );
 }
 </script>
 
@@ -152,15 +162,9 @@ float RGBAToFloat(vec4 rgba);
 
 void main()
 {
-    if(texture2D(uBCTexture, vTexCoord).r > 0.5)
-    {
-        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-    }
-    else
-    {
-        float z = 4.0*RGBAToFloat(texture2D(uWaveTexture, vTexCoord));
-        gl_FragColor = vec4(z, z, z, 1.0);
-    }
+    float bc = 1.0 - texture2D(uBCTexture, vTexCoord).r;
+    float z = 4.0*RGBAToFloat(texture2D(uWaveTexture, vTexCoord));
+    gl_FragColor = vec4(z, z, z, 1.0) * vec4(bc, bc, bc, 1.0);
 }
 
 float RGBAToFloat(vec4 rgba)

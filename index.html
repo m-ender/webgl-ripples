@@ -156,15 +156,40 @@ precision highp float;
 uniform sampler2D uBCTexture;
 uniform sampler2D uWaveTexture;
 
+uniform int       uResolution; // of the textures
+
 varying vec2      vTexCoord;
 
 float RGBAToFloat(vec4 rgba);
 
 void main()
 {
-    float bc = 1.0 - texture2D(uBCTexture, vTexCoord).r;
-    float z = 4.0*RGBAToFloat(texture2D(uWaveTexture, vTexCoord));
-    gl_FragColor = vec4(z, z, z, 1.0) * vec4(bc, bc, bc, 1.0);
+    float bc = texture2D(uBCTexture, vTexCoord).r;
+    
+    if(bc > 0.2) discard;
+    
+    float stepSize = 1.0/float(uResolution);
+    
+    float z  = 4.0*RGBAToFloat(texture2D(uWaveTexture, vTexCoord));                         // sample at current position
+    float zw = 4.0*RGBAToFloat(texture2D(uWaveTexture, vTexCoord + vec2(-stepSize, 0)));    // sample west of current position
+    float ze = 4.0*RGBAToFloat(texture2D(uWaveTexture, vTexCoord + vec2( stepSize, 0)));    // sample east of current position
+    float zs = 4.0*RGBAToFloat(texture2D(uWaveTexture, vTexCoord + vec2(0, -stepSize)));    // sample south of current position
+    float zn = 4.0*RGBAToFloat(texture2D(uWaveTexture, vTexCoord + vec2(0,  stepSize)));    // sample north of current position
+    
+    vec3 N = normalize(vec3((zw - ze)/(2.0), (zs - zn)/(2.0), 1)); // surface normal
+    vec3 L = normalize(vec3(0.5, 0.5, 1.0)); // direction towards light source
+    vec3 V = vec3(0.0, 0.0, 1.0); // direction towards viewpoint (straight up)
+    float Rs = dot(2.0*N*dot(N,L) - L, V); // reflection coefficient of specular light, this is actually the dot product of V and and the direction of reflected light
+    float k = 8.0; // specular exponent
+    
+    vec4 specularColor = vec4(2.0*pow(Rs,k));
+    vec4 diffuseColor = vec4(0.0, 0.0, 1.0, 1.0)*dot(N,L);
+    vec4 ambientColor = vec4(0.0, 0.0, 0.3, 1.0);
+    
+    diffuseColor = vec4(0.0);
+        
+    gl_FragColor = specularColor + diffuseColor + ambientColor; //* vec4(bc, bc, bc, 1.0);
+    gl_FragColor.a = 1.0;
 }
 
 float RGBAToFloat(vec4 rgba)

@@ -33,8 +33,8 @@ var c = 40;     // Wave propagation speed, in texels per second
 var damping = 0.99;
 
 // Splash parameters
-var width = 30;
-var r = 15;
+var width = 15;
+var r = 8;
 
 window.onload = init;
 
@@ -184,6 +184,8 @@ function init()
     // Load shaders and get uniform locations
     splashProgram.program = InitShaders(gl, "splash-vertex-shader", "splash-fragment-shader");
     splashProgram.uBCTexture = gl.getUniformLocation(splashProgram.program, "uBCTexture");
+    splashProgram.uBaseTexture = gl.getUniformLocation(splashProgram.program, "uBaseTexture");
+    splashProgram.uUseBaseTexture = gl.getUniformLocation(splashProgram.program, "uUseBaseTexture");
     splashProgram.uCenter = gl.getUniformLocation(splashProgram.program, "uCenter");
     splashProgram.uR = gl.getUniformLocation(splashProgram.program, "uR");
     splashProgram.uWidth = gl.getUniformLocation(splashProgram.program, "uWidth");
@@ -195,6 +197,7 @@ function init()
     gl.uniform1f(splashProgram.uWidth, width);
     gl.uniform1i(splashProgram.uResolution, resolution);
     gl.uniform1i(splashProgram.uBCTexture, 0);
+    gl.uniform1i(splashProgram.uBaseTexture, 1);
     
     simulationProgram.program = InitShaders(gl, "simulation-vertex-shader", "simulation-fragment-shader");    
     simulationProgram.uBCTexture = gl.getUniformLocation(simulationProgram.program, "uBCTexture");
@@ -271,9 +274,11 @@ function init()
     // Initialize texture
     var bcImage = new Image();
     bcImage.onload = function() {
-        ConfigureBCTexture(bcImage);
+        ConfigureBCTexture(bcImage);        
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, bcTexture);
+        addSplash(0, 0, -1.0, -1.0);
         previousTexture = 0;
-        prepareScene();
         lastTime = Date.now();
         render();
     };
@@ -282,23 +287,33 @@ function init()
     InitTextureFramebuffers();
 }
 
-function prepareScene()
+// Renders an expanding splash into the texture at "targetTexture" and the one after that
+// If useBaseTexture == 1, then the splash is added to the texture 2 indices before the targetTexture
+// I.e., if the textures[] array currently holds the previous and current state in its last to indices:
+// textures = [irrelevantTexture, previousTexture, currentTexture]
+// then calling addSplash(0, 1) will result in
+// textures = [previousTexture', currentTexture', currentTexture]
+// So that index 3 can now be discarded and used as the next render target.
+function addSplash(targetTexture, useBaseTexture, centerX, centerY)
 {
     gl.viewport(0, 0, resolution, resolution);
     gl.useProgram(splashProgram.program);
     
-    gl.bindFramebuffer(gl.FRAMEBUFFER, rttFramebuffers[previousTexture]);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, rttFramebuffers[targetTexture]);
     
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, bcTexture);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, textures[(targetTexture + 1) % 3]);
     
+    gl.uniform1i(splashProgram.uUseBaseTexture, useBaseTexture);
     gl.uniform1f(splashProgram.uR, r);
-    gl.uniform2f(splashProgram.uCenter, 0.5, 0.5);
+    gl.uniform2f(splashProgram.uCenter, centerX, centerY);
     
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
     
-    gl.bindFramebuffer(gl.FRAMEBUFFER, rttFramebuffers[(previousTexture + 1) % 3]);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, rttFramebuffers[(targetTexture + 1) % 3]);
+    
+    gl.bindTexture(gl.TEXTURE_2D, textures[(targetTexture + 2) % 3]);
     
     gl.uniform1f(splashProgram.uR, r + c*dT);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -307,9 +322,9 @@ function prepareScene()
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, textures[previousTexture]);
+    gl.bindTexture(gl.TEXTURE_2D, textures[targetTexture]);
     gl.generateMipmap(gl.TEXTURE_2D);
-    gl.bindTexture(gl.TEXTURE_2D, textures[(previousTexture + 1) % 3]);
+    gl.bindTexture(gl.TEXTURE_2D, textures[(targetTexture + 1) % 3]);
     gl.generateMipmap(gl.TEXTURE_2D);
 }
 
@@ -350,6 +365,12 @@ function render()
     if (dTime > interval)
     {
         lastTime = currentTime - (dTime % interval);
+        
+        if(Math.random() < 1/60)
+        {
+            previousTexture = (previousTexture + 2) % 3;
+            addSplash(previousTexture, 1, Math.random(), Math.random());
+        }
         
         gl.bindFramebuffer(gl.FRAMEBUFFER, rttFramebuffers[(previousTexture + 2) % 3]);
         drawNewTexture();

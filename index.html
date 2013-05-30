@@ -43,7 +43,7 @@ void main()
     float d = length(vTexCoord - uCenter);
     float r = uR/float(uResolution);
     float width = uWidth/float(uResolution);
-    float bc = texture2D(uBCTexture, vTexCoord).r;
+    float bc = texture2D(uBCTexture, vTexCoord).a;
     float base = float(uUseBaseTexture) * 4.0*RGBAToFloat(texture2D(uBaseTexture, vTexCoord)) + float(1 - uUseBaseTexture) * 0.5;
         
     // x exp(-x^2) shaped ripple:
@@ -111,7 +111,7 @@ void main()
     float zs = RGBAToFloat(texture2D(uCurrentTexture, vTexCoord + vec2(0, -stepSize)));    // sample south of current position
     float zn = RGBAToFloat(texture2D(uCurrentTexture, vTexCoord + vec2(0,  stepSize)));    // sample north of current position
     float zp = RGBAToFloat(texture2D(uPreviousTexture, vTexCoord));                        // sample at previous timestep
-    float bc = texture2D(uBCTexture, vTexCoord).r;
+    float bc = texture2D(uBCTexture, vTexCoord).a;
     
     float eps = float(uC*uC)*uDT*uDT; // scaling factor from finite difference scheme
     
@@ -164,9 +164,7 @@ float RGBAToFloat(vec4 rgba);
 
 void main()
 {
-    float bc = texture2D(uBCTexture, vTexCoord).r;
-    
-    if(bc > 0.2) discard;
+    vec4 bc = texture2D(uBCTexture, vTexCoord);
     
     float stepSize = 1.0/float(uResolution);
     
@@ -188,7 +186,8 @@ void main()
     
     diffuseColor = vec4(0.0);
         
-    gl_FragColor = specularColor + diffuseColor + ambientColor; //* vec4(bc, bc, bc, 1.0);
+    gl_FragColor = specularColor + diffuseColor + ambientColor;
+    gl_FragColor = gl_FragColor*(1.0-bc.a) + bc*bc.a;
     gl_FragColor.a = 1.0;
 }
 

@@ -57,7 +57,7 @@ function ConfigureBCTexture(image)
     bcTexture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, bcTexture);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
     gl.generateMipmap(gl.TEXTURE_2D);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -192,7 +192,7 @@ function init()
     
     messageBox.style.visibility = "visible";
     
-    gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    gl.clearColor(1.0, 1.0, 0.0, 1.0);
     
     // Load shaders and get uniform locations
     splashProgram.program = InitShaders(gl, "splash-vertex-shader", "splash-fragment-shader");
@@ -297,7 +297,7 @@ function init()
         lastTime = Date.now();
         render();
     };
-    bcImage.src = "bcTexture.gif";
+    bcImage.src = "bcTexture.png";
     
     InitTextureFramebuffers();
 }
@@ -359,6 +359,8 @@ function drawNewTexture()
 
 function drawScreen()
 {
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.useProgram(screenProgram.program);
 
     gl.activeTexture(gl.TEXTURE1)
@@ -368,6 +370,7 @@ function drawScreen()
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+    gl.disable(gl.BLEND);
 }
 
 function render()

@@ -20,9 +20,9 @@ div#debug{
     width: 20%;
     height: 100%;
     padding: 10px;
-    font-family: Consolas;
     background: rgb(255, 255, 255);
     background: rgba(255, 255, 255, 0.8);
+    visibility:hidden;
 }
 
 div#message{
@@ -31,4 +31,9 @@ div#message{
     padding: 5px;
     background: rgb(48, 41, 17);
     color: white;
+    position: absolute;
+    right: 20px;
+    top: 20px;
+    font-family: Consolas;
+    width: 300px;
 }

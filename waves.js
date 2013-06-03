@@ -19,6 +19,7 @@ var rttFramebuffers = []; // Render to texture memory (this will store 3 framebu
 var bcTexture; // And a texture for the boundary conditions, white regions will disallow wave propagation
 var resolution = 512;
 var aspectRatio;
+var viewPort = {};
 
 var previousTexture; // Points to the texture from two frames ago, so that we only ever need to add to this value (makes module maths simpler)
 
@@ -31,13 +32,13 @@ var lastTime;
 // Simulation parameters
 var dT = 1/fps; // Time step, in seconds
 var c = 40;     // Wave propagation speed, in texels per second
-var damping = 0.99;
+var damping = 0.98;
 
 // Splash parameters
 var width = 15;
 var r = 8;
 
-var randomSplashP = 1/60; // Probability for a random splash to be created per frame
+var randomSplashP = 1/30; // Probability for a random splash to be created per frame
 var splashRequested;
 
 window.onload = init;
@@ -172,16 +173,22 @@ function handleMouseDown(event) {
 function init()
 {
     canvas = document.getElementById("gl-canvas");
-    var computedWidth = window.getComputedStyle(canvas, null).getPropertyValue("width");
-    var computedHeight = window.getComputedStyle(canvas, null).getPropertyValue("height");
-    // This is the actual extent of the canvas on the page
-    canvas.style.height = Math.min(parseInt(computedWidth), parseInt(computedHeight));
-    // This is the resolution of the canvas (which will be scaled to the extent, using some rather primitive anti-aliasing techniques)
-    canvas.height = Math.min(parseInt(computedWidth), parseInt(computedHeight));
-    canvas.width = parseInt(computedWidth);    
-    aspectRatio = canvas.width/canvas.height;
+    var computedWidth = parseInt(window.getComputedStyle(canvas, null).getPropertyValue("width"));
+    var computedHeight = parseInt(window.getComputedStyle(canvas, null).getPropertyValue("height"));
     
-    console.log(computedWidth,computedHeight,canvas.style.height, canvas.height)
+    // The width of the viewport will correspond to the entire width of the textures (stored in resolution).
+    // Hence, we make the height an integer multiple of one texel. We also limit the height so that it cannot exceed the width.
+    var texelSize = computedWidth/resolution;
+    viewPort.width = computedWidth;
+    viewPort.height = Math.min(Math.ceil(computedHeight/texelSize)*texelSize, computedWidth);
+    
+    // This is the actual extent of the canvas on the page
+    canvas.style.width = viewPort.width;
+    canvas.style.height = viewPort.height;
+    // This is the resolution of the canvas (which will be scaled to the extent, using some rather primitive anti-aliasing techniques)
+    canvas.width = viewPort.width;
+    canvas.height = viewPort.height;    
+    aspectRatio = viewPort.width/viewPort.height;
     
     canvas.addEventListener('mousedown', handleMouseDown, false);
     
@@ -196,7 +203,7 @@ function init()
     
     messageBox.style.visibility = "visible";
     
-    gl.clearColor(1.0, 1.0, 0.0, 1.0);
+    gl.clearColor(0.121569, 0.87451, 0.121569, 0.875); // RGBA-packed form of the float 0.125
     
     // Load shaders and get uniform locations
     splashProgram.program = InitShaders(gl, "splash-vertex-shader", "splash-fragment-shader");
@@ -207,14 +214,12 @@ function init()
     splashProgram.uR = gl.getUniformLocation(splashProgram.program, "uR");
     splashProgram.uWidth = gl.getUniformLocation(splashProgram.program, "uWidth");
     splashProgram.uResolution = gl.getUniformLocation(splashProgram.program, "uResolution");
-    splashProgram.uAspectRatio = gl.getUniformLocation(splashProgram.program, "uAspectRatio");
     splashProgram.aPos = gl.getAttribLocation(splashProgram.program, "aPos");
     splashProgram.aTexCoord = gl.getAttribLocation(splashProgram.program, "aTexCoord");
     
     gl.useProgram(splashProgram.program);
     gl.uniform1f(splashProgram.uWidth, width);
     gl.uniform1i(splashProgram.uResolution, resolution);
-    gl.uniform1f(splashProgram.uAspectRatio, aspectRatio);
     gl.uniform1i(splashProgram.uBCTexture, 0);
     gl.uniform1i(splashProgram.uBaseTexture, 1);
     
@@ -227,7 +232,6 @@ function init()
     simulationProgram.uC = gl.getUniformLocation(simulationProgram.program, "uC");
     simulationProgram.uDamping = gl.getUniformLocation(simulationProgram.program, "uDamping");
     simulationProgram.uResolution = gl.getUniformLocation(simulationProgram.program, "uResolution");
-    simulationProgram.uAspectRatio = gl.getUniformLocation(simulationProgram.program, "uAspectRatio");
     simulationProgram.aPos = gl.getAttribLocation(simulationProgram.program, "aPos");
     simulationProgram.aTexCoord = gl.getAttribLocation(simulationProgram.program, "aTexCoord");
     
@@ -239,13 +243,11 @@ function init()
     gl.uniform1i(simulationProgram.uC, c);
     gl.uniform1f(simulationProgram.uDamping, damping);
     gl.uniform1i(simulationProgram.uResolution, resolution);
-    gl.uniform1f(simulationProgram.uAspectRatio, aspectRatio);
     
     screenProgram.program = InitShaders(gl, "screen-vertex-shader", "screen-fragment-shader");  
     screenProgram.uBCTexture = gl.getUniformLocation(screenProgram.program, "uBCTexture");  
     screenProgram.uWaveTexture = gl.getUniformLocation(screenProgram.program, "uWaveTexture");
     screenProgram.uResolution = gl.getUniformLocation(screenProgram.program, "uResolution");
-    screenProgram.uAspectRatio = gl.getUniformLocation(screenProgram.program, "uAspectRatio");
     screenProgram.aPos = gl.getAttribLocation(screenProgram.program, "aPos");
     screenProgram.aTexCoord = gl.getAttribLocation(screenProgram.program, "aTexCoord");
     
@@ -253,7 +255,6 @@ function init()
     gl.uniform1i(screenProgram.uBCTexture, 0);
     gl.uniform1i(screenProgram.uWaveTexture, 1);
     gl.uniform1i(screenProgram.uResolution, resolution);
-    gl.uniform1f(screenProgram.uAspectRatio, aspectRatio);
     gl.useProgram(null);
     
     // Initialize attribute buffers
@@ -279,8 +280,8 @@ function init()
     var texCoords = {};
     texCoords.data = new Float32Array(
         [
-            0.0, 0.0, 
-            1.0, 0.0, 
+            0.0, 1.0 - 1.0/aspectRatio, 
+            1.0, 1.0 - 1.0/aspectRatio, 
             1.0, 1.0,
             0.0, 1.0
         ]);
@@ -294,6 +295,8 @@ function init()
     gl.enableVertexAttribArray(simulationProgram.aTexCoord);
     gl.vertexAttribPointer(screenProgram.aTexCoord, 2, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(screenProgram.aTexCoord);
+    
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     
     // Initialize texture
     var bcImage = new Image();
@@ -320,7 +323,7 @@ function init()
 // So that index 3 can now be discarded and used as the next render target.
 function addSplash(targetTexture, useBaseTexture, centerX, centerY)
 {
-    gl.viewport(0, 0, resolution, resolution);
+    gl.viewport(0, resolution*(1.0 - 1.0/aspectRatio), resolution, resolution/aspectRatio);
     gl.useProgram(splashProgram.program);
     
     gl.bindFramebuffer(gl.FRAMEBUFFER, rttFramebuffers[targetTexture]);
@@ -361,7 +364,7 @@ function drawNewTexture()
     gl.activeTexture(gl.TEXTURE2)
     gl.bindTexture(gl.TEXTURE_2D, textures[(previousTexture + 1) % 3]);
     
-    gl.viewport(0, 0, resolution, resolution);
+    gl.viewport(0, resolution*(1.0 - 1.0/aspectRatio), resolution, resolution/aspectRatio);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
 }
@@ -369,14 +372,13 @@ function drawNewTexture()
 function drawScreen()
 {
     gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.useProgram(screenProgram.program);
 
     gl.activeTexture(gl.TEXTURE1)
     gl.bindTexture(gl.TEXTURE_2D, textures[(previousTexture + 2) % 3]);
     gl.generateMipmap(gl.TEXTURE_2D);
     
-    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.viewport(0, 0, viewPort.width, viewPort.height);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
     gl.disable(gl.BLEND);

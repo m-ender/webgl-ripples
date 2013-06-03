@@ -176,6 +176,8 @@ function init()
     var computedWidth = parseInt(window.getComputedStyle(canvas, null).getPropertyValue("width"));
     var computedHeight = parseInt(window.getComputedStyle(canvas, null).getPropertyValue("height"));
     
+    console.log(computedWidth, computedHeight);
+    
     // The width of the viewport will correspond to the entire width of the textures (stored in resolution).
     // Hence, we make the height an integer multiple of one texel. We also limit the height so that it cannot exceed the width.
     var texelSize = computedWidth/resolution;

@@ -1,0 +1,210 @@
+<html>
+<head>
+<title>Waves</title>
+<link rel="stylesheet" type="text/css" href="main.css" />
+
+<script id="splash-vertex-shader" type="x-shader/x-vertex">
+attribute vec4 aPos;
+attribute vec2 aTexCoord;
+
+varying vec2 vTexCoord;
+
+void main()
+{
+    vTexCoord = aTexCoord;
+    gl_Position = aPos;
+}
+</script>
+
+<script id="splash-fragment-shader" type="x-shader/x-fragment">
+#ifdef GL_ES
+precision highp float;
+#endif
+
+uniform sampler2D uBCTexture;
+uniform sampler2D uBaseTexture;
+
+uniform int   uUseBaseTexture; // 0 - initialise to empty texture, with 0.5 everywhere, 1 - add splash onto existing uBaseTexture
+
+uniform vec2  uCenter;         // Center of sinusoidal splash, in normalized coordinates
+uniform float uR;              // Radius on which the sine is going to be centered, in screen coordinates
+uniform float uWidth;          // Width (period) of the sine, in screen coordinates
+uniform int   uResolution;     // of the textures
+varying vec2 vTexCoord;
+
+vec4 floatToRGBA(float z);
+float RGBAToFloat(vec4 rgba);
+
+void main()
+{
+    float pi = 3.14159265358979323846264;
+    float e  = 2.71828182845904523536028;
+    float d = length(vTexCoord - uCenter);
+    float r = uR/float(uResolution);
+    float width = uWidth/float(uResolution);
+    float bc = texture2D(uBCTexture, vTexCoord).a;
+    float centerBC = texture2D(uBCTexture, uCenter).a;
+    float base = float(uUseBaseTexture) * 4.0*RGBAToFloat(texture2D(uBaseTexture, vTexCoord)) + float(1 - uUseBaseTexture) * 0.5;
+    float totalBC = (1.0 - bc)*(1.0 - centerBC);
+    // x exp(-x^2) shaped ripple:
+    //float z = 0.5 + step(r - width/2.0, d) * (step(-r - width/2.0, -d)) * (2.0*sqrt(2.0*e)/width)*(d-r)*exp(-16.0*(d - r)*(d - r)/(width*width)); // The step functions "clamp" the wave to one period centred at uR
+    
+    // 4 sinusoidal ripples:
+    float z = base + totalBC*(1.0 - centerBC)*step(r - width/2.0, d) * (step(-r - width/2.0, -d)) * 0.5*(sin((d - r)*4.0*pi/width)); // The step functions "clamp" the wave to one period centred at uR
+        
+    gl_FragColor = floatToRGBA(z/4.0); // sacrifice two digits of precision, to make sure that we're always in the [0,1) range.
+}
+
+// Shamelessly stolen from http://aras-p.info/blog/2009/07/30/encoding-floats-to-rgba-the-final/
+vec4 floatToRGBA(float z)
+{
+    z = clamp(z, 0.0000001, 0.9999999); // for z = 1.0, the 1 would be lost, and after unpacking we'd obtain 0.0
+    vec4 enc = vec4(1.0, 255.0, 255.0*255.0, 255.0*255.0*255.0) * z;
+    enc = fract(enc);
+    enc -= enc.gbaa * vec4(1.0/255.0,1.0/255.0,1.0/255.0,0.0);
+    return enc;
+}
+
+float RGBAToFloat(vec4 rgba)
+{
+    return dot( rgba, vec4(1.0, 1.0/255.0, 1.0/(255.0*255.0), 1.0/(255.0*255.0*255.0)) );
+}
+</script>
+
+<script id="simulation-vertex-shader" type="x-shader/x-vertex">
+attribute vec4 aPos;
+attribute vec2 aTexCoord;
+
+varying vec2 vTexCoord;
+
+void main()
+{    
+    vTexCoord = aTexCoord;
+    gl_Position = aPos;
+}
+</script>
+
+<script id="simulation-fragment-shader" type="x-shader/x-fragment">
+#ifdef GL_ES
+precision highp float;
+#endif
+
+uniform sampler2D uBCTexture;
+uniform sampler2D uPreviousTexture;
+uniform sampler2D uCurrentTexture;
+
+uniform int       uC;  // wave propagation speed, given in texels per second
+uniform float     uDT; // time step size, given in seconds
+uniform float     uDamping; // factor by which the amplitude is reduced at every time step
+uniform int       uResolution; // of the textures
+varying vec2      vTexCoord;
+
+vec4 floatToRGBA(float z);
+float RGBAToFloat(vec4 rgba);
+
+void main()
+{
+    float stepSize = 1.0/float(uResolution);
+    float z  = RGBAToFloat(texture2D(uCurrentTexture, vTexCoord));                         // sample at current position
+    float zw = RGBAToFloat(texture2D(uCurrentTexture, vTexCoord + vec2(-stepSize, 0)));    // sample west of current position
+    float ze = RGBAToFloat(texture2D(uCurrentTexture, vTexCoord + vec2( stepSize, 0)));    // sample east of current position
+    float zs = RGBAToFloat(texture2D(uCurrentTexture, vTexCoord + vec2(0, -stepSize)));    // sample south of current position
+    float zn = RGBAToFloat(texture2D(uCurrentTexture, vTexCoord + vec2(0,  stepSize)));    // sample north of current position
+    float zp = RGBAToFloat(texture2D(uPreviousTexture, vTexCoord));                        // sample at previous timestep
+    float bc = texture2D(uBCTexture, vTexCoord).a;
+    
+    float eps = float(uC*uC)*uDT*uDT; // scaling factor from finite difference scheme
+    
+    float znew = (1.0 - bc)*uDamping*(2.0*z + eps*(zw + ze + zs + zn - 4.0*z) - zp - 0.125) + 0.125; // finite difference scheme of 2-dimensional wave function
+    
+    gl_FragColor = floatToRGBA(znew);
+}
+
+vec4 floatToRGBA(float z)
+{
+    z = clamp(z, 0.0, 0.9999999);
+    vec4 enc = vec4(1.0, 255.0, 255.0*255.0, 255.0*255.0*255.0) * z;
+    enc = fract(enc);
+    enc -= enc.gbaa * vec4(1.0/255.0,1.0/255.0,1.0/255.0,0.0);
+    return enc;
+}
+
+float RGBAToFloat(vec4 rgba)
+{
+    return dot( rgba, vec4(1.0, 1.0/255.0, 1.0/(255.0*255.0), 1.0/(255.0*255.0*255.0)) );
+}
+</script>
+
+<script id="screen-vertex-shader" type="x-shader/x-vertex">
+attribute vec4 aPos;
+attribute vec2 aTexCoord;
+
+varying vec2 vTexCoord;
+varying vec4 vPos;
+
+void main()
+{    
+    vTexCoord = aTexCoord;
+    gl_Position = aPos;
+}
+</script>
+
+<script id="screen-fragment-shader" type="x-shader/x-fragment">
+#ifdef GL_ES
+precision highp float;
+#endif
+
+uniform sampler2D uBCTexture;
+uniform sampler2D uWaveTexture;
+
+uniform int       uResolution;  // of the textures
+
+varying vec2      vTexCoord;
+
+float RGBAToFloat(vec4 rgba);
+
+void main()
+{
+    vec4 bc = texture2D(uBCTexture, vTexCoord);
+    
+    float stepSize = 1.0/float(uResolution);
+    
+    float z  = 4.0*RGBAToFloat(texture2D(uWaveTexture, vTexCoord));                         // sample at current position
+    float zw = 4.0*RGBAToFloat(texture2D(uWaveTexture, vTexCoord + vec2(-stepSize, 0)));    // sample west of current position
+    float ze = 4.0*RGBAToFloat(texture2D(uWaveTexture, vTexCoord + vec2( stepSize, 0)));    // sample east of current position
+    float zs = 4.0*RGBAToFloat(texture2D(uWaveTexture, vTexCoord + vec2(0, -stepSize)));    // sample south of current position
+    float zn = 4.0*RGBAToFloat(texture2D(uWaveTexture, vTexCoord + vec2(0,  stepSize)));    // sample north of current position
+    
+    vec3 N = normalize(vec3((zw - ze)/(2.0), (zs - zn)/(2.0), 1)); // surface normal
+    vec3 L = normalize(vec3(0.5, 0.5, 1.0)); // direction towards light source
+    vec3 V = vec3(0.0, 0.0, 1.0); // direction towards viewpoint (straight up)
+    float Rs = dot(2.0*N*dot(N,L) - L, V); // reflection coefficient of specular light, this is actually the dot product of V and and the direction of reflected light
+    float k = 8.0; // specular exponent
+    
+    vec4 specularColor = vec4(2.0*pow(Rs,k));
+    vec4 diffuseColor = vec4(0.0, 0.0, 1.0, 1.0)*dot(N,L);
+    vec4 ambientColor = vec4(0.0, 0.0, 0.3, 1.0);
+    
+    diffuseColor = vec4(0.0);
+        
+    gl_FragColor = specularColor + diffuseColor + ambientColor;
+    gl_FragColor = gl_FragColor*(1.0-bc.a) + bc*bc.a;
+    gl_FragColor.a = 1.0;
+}
+
+float RGBAToFloat(vec4 rgba)
+{
+    return dot( rgba, vec4(1.0, 1.0/255.0, 1.0/(255.0*255.0), 1.0/(255.0*255.0*255.0)) );
+}
+</script>
+
+<script type="text/javascript" src="webgl-utils.js"></script>
+<script type="text/javascript" src="waves.js"></script>
+</head>
+<body>
+<canvas id="gl-canvas">
+    Oops ... your browser doesn't support HTML5's Canvas elements!
+</canvas>
+<div id="message"></div>
+</body>
+</html>

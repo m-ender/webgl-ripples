@@ -1,6 +1,6 @@
 WebGL Ripples
 =============
 
-Trying to build a real-time simulation of 2D waves in WebGL.
+A physically realistic real-time simulation of (transversal) 2D waves in WebGL.
 
-[Live Demo](http://mbuettner.github.io/webgl-ripples) of the current version.
+[Check out the live demo!](http://mbuettner.github.io/webgl-ripples)
